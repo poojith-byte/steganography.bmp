@@ -1,0 +1,180 @@
+#include<stdio.h>
+#include<string.h>
+#include "decode.h"
+#include "types.h"
+#include "common.h"
+
+/*
+1:Read and validate .bmp
+*/
+char* Decode_character(char buffer[],char *magic){
+    int i=0;
+    for(i=0;i<8;i++){
+        *magic = *magic|((buffer[i]&1)<<(7-i));
+    }
+    if(i==8){
+        //printf("this is %c\n",*magic);
+        return magic;
+        
+    }
+    else{
+        return NULL;
+    }
+    
+    
+}
+int *decode_integer(char buffer[],int *num)
+{
+    int i=0;
+    for(i=0;i<32;i++)
+    {
+        *num = *num|((buffer[i]&1)<<(31-i));
+    }
+    return num;
+}
+Dstatus read_and_validate_decode_args(int argc,char *argv[],DecodeInfo *decodeInfo)
+{   
+    printf("count - %d\n",argc);
+    char *ret = strrchr(argv[2],'.');
+    if(ret ==NULL || strcmp(ret,".bmp")!=0) 
+    {
+        printf(".bmp not present");
+        return d_failure;
+    }
+    decodeInfo->src_image_name = argv[2];
+    int i=0;
+    if(argc==4)
+    {
+        while(argv[3][i]!='\0'){
+            if(argv[3][i]=='.'){
+                break;
+            }
+            decodeInfo->output[i]=argv[3][i];
+            i++;
+        }
+        decodeInfo->output[i]='\0';  
+    }
+    else{
+        strcpy(decodeInfo->output,"stego");
+    }
+
+    return d_success;
+}
+
+Dstatus Dopen_files(DecodeInfo *decodeInfo )
+{
+    decodeInfo->stego_image_pointer = fopen(decodeInfo->src_image_name,"r");
+    if(decodeInfo->stego_image_pointer==NULL){
+        printf("Error opning the stego file\n");
+        return d_failure;
+    }
+    return d_success;
+};
+Dstatus open_outfile(DecodeInfo *decodeInfo)
+{
+    decodeInfo->file_pointer_out =fopen(decodeInfo->output,"w");
+    if(decodeInfo->file_pointer_out==NULL){
+        printf("Error opning the output file\n");
+        return d_failure;
+    }
+    return d_success;
+}
+Dstatus Decode_magic_string(FILE *stego_pointer)
+{
+
+    if(fseek(stego_pointer,54,SEEK_SET)!=0)return d_failure;
+    char buffer[8];
+    unsigned char magic=0;
+        
+    for(int i=0;i<2;i++)
+    {   
+        magic=0;
+        if(fread(buffer,1,8,stego_pointer)!=8)
+        {
+            printf("Error: in decode_magic_string unable to read from stego\n");
+            return d_failure;
+        }
+        if(Decode_character(buffer,&magic)!=NULL)
+        {
+            if(magic != MAGIC_STRING[i])
+            {
+                printf("Error:Mgic string did not match\n");
+                return d_failure;
+            }
+        }
+    }
+    
+    return d_success;
+
+
+}
+Dstatus Decode_extenshion_size(FILE *stego_pointer,DecodeInfo *decodeInfo)
+{   
+    int num=0;
+    char buffer[32];
+    fread(buffer,1,32,stego_pointer);
+    if((decodeInfo->stego_extenshion_size = *decode_integer(buffer,&num))==d_failure){
+        return d_failure;
+    }
+    printf("size of extenshion is : %d\n",num);
+    return d_success;
+}
+
+Dstatus decode_sec_ext(DecodeInfo *decodeInfo)
+{
+    int size = decodeInfo->stego_extenshion_size,i;
+    char buffer[8],ch=0;
+    char str[size];
+    for(i=0;i<size;i++)
+    {
+    ch = 0;
+    fread(buffer,1,8,decodeInfo->stego_image_pointer);
+    if(Decode_character(buffer,&ch)==NULL){
+        return d_failure;
+    }
+    str[i]=ch;
+    }
+    str[i]='\0';
+    strcpy(decodeInfo->stego_extenshion,str);
+    printf("the extenshion of the file is : %s\n",decodeInfo->stego_extenshion);
+    printf("the extenshion of the file name is : %s\n",decodeInfo->output);
+    strcat(decodeInfo->output,decodeInfo->stego_extenshion);
+    printf("the output file name is  : %s\n",decodeInfo->output);
+    return d_success;
+}
+Dstatus Decode_data_size(DecodeInfo *decodeInfo){
+    int num=0;
+    char buffer[32];
+    fread(buffer,1,32,decodeInfo->stego_image_pointer);
+    if((decodeInfo->stego_data_size = *decode_integer(buffer,&num))==d_failure){
+        return d_failure;
+    }
+    printf("size of secreat data is : %d\n",num);
+    return d_success;
+}
+Dstatus decode_sec_data(DecodeInfo *decodeInfo){
+    char buffer[8];
+    unsigned char ch=0;
+    int num = decodeInfo->stego_data_size;
+    for(int i=0;i<num;i++)
+    {
+    fread(buffer,1,8,decodeInfo->stego_image_pointer);
+    Decode_character(buffer,&ch);
+    fputc(ch,decodeInfo->file_pointer_out);
+    ch =0;
+    }
+    return d_success;
+}
+
+Dstatus do_Decoding(DecodeInfo *decodeInfo)
+{
+    if(Dopen_files(decodeInfo)==d_success) printf("File sucessfully opned\n");
+    if(Decode_magic_string(decodeInfo->stego_image_pointer)==d_success) printf("magic string matched\n");
+    if(Decode_extenshion_size(decodeInfo->stego_image_pointer,decodeInfo)==d_success) printf("extenshion size has been decoded\n");
+    if((decode_sec_ext(decodeInfo))==d_success) printf("extenshion has been extracted\n");
+    if((open_outfile(decodeInfo))==d_success) printf("out put file is open \n");
+    if((Decode_data_size(decodeInfo))==d_success) printf("data size has been sucessfully decoded\n");
+    if((decode_sec_data(decodeInfo))==d_success) printf("sucessfully data has been decoded\n");
+    return d_success;
+
+}
