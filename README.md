@@ -114,7 +114,7 @@ gcc *.c
 ## 👨‍💻 Author
 
 **Poojith M**
-Course Project – LSB Steganography in C
+-Project – LSB Steganography in C
 
 ---
 
